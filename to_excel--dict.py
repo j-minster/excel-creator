@@ -42,14 +42,6 @@ def get_scenarios(df):
         allcols.remove(group)
     return allcols
 
-## TODO: determine if unused and delete
-def df_from_indices(df, indices):
-    return df.iloc[indices]
-
-def drop_columns(df, columns):
-    return df.drop(columns=columns)
-
-
 # infinite dict
 class NestedDict(dict):
     def __getitem__(self, key):
@@ -128,6 +120,7 @@ def create_header_block(sheetname, worksheet, sheet_dict, workbook, groupnames, 
                                            'bg_color': greycolor,
                                            'border_color': bordercolor,
                                            'align': 'centre',
+                                           'valign': 'vcentre',
                                            'font_name': 'Segoe UI (Body)',
                                            'font_size': 8,
                                            'top': 1,
@@ -138,6 +131,7 @@ def create_header_block(sheetname, worksheet, sheet_dict, workbook, groupnames, 
                                              'bg_color': greycolor,
                                              'border_color': bordercolor,
                                              'align': 'centre',
+                                             'valign': 'vcentre',
                                              'font_name': 'Segoe UI (Body)',
                                              'font_size': 8,
                                              'top': 1,
@@ -148,6 +142,7 @@ def create_header_block(sheetname, worksheet, sheet_dict, workbook, groupnames, 
                                              'bg_color': greycolor,
                                              'border_color': bordercolor,
                                              'align': 'centre',
+                                             'valign': 'vcentre',
                                              'font_name': 'Segoe UI (Body)',
                                              'font_size': 8,
                                              'top': 1,
@@ -155,26 +150,77 @@ def create_header_block(sheetname, worksheet, sheet_dict, workbook, groupnames, 
                                              'left': 0,
                                              'right': 1})
 
+    scenario_col_offset = 6
     for offset, name in enumerate(scenarionames):
         if offset == 0:
-            worksheet.write(2, 7+offset, name, l_scenario_format)
+            worksheet.write(2, scenario_col_offset+offset, name, l_scenario_format)
 
         elif offset == len(scenarionames)-1:
-            worksheet.write(2, 7+offset, name, r_scenario_format)
+            worksheet.write(2, scenario_col_offset+offset, name, r_scenario_format)
 
         else:
-            worksheet.write(2, 7+offset, name, scenario_format)
+            worksheet.write(2, scenario_col_offset+offset, name, scenario_format)
 
+    # create dropdowns
+    dropdown_format = workbook.add_format({'bottom': 1,
+                                           'border_color': bordercolor,
+                                           'align': 'centre',
+                                           'valign': 'vcentre',
+                                           'font_name': 'Segoe UI (Body)',
+                                           'font_size': 8,
+                                           'bg_color': '#DAEDF8',
+                                           'fg_color': '#FFFFFF',
+                                           'pattern': 16
+                                           })
+    input_cell_1 = 'B$3'
+    worksheet.data_validation(input_cell_1, {'validate': 'list',
+                                             'source': scenarionames,
+                                             'input_title': 'Pick a scenario'
+                                             })
+    worksheet.write(input_cell_1, scenarionames[0], dropdown_format)
 
+    input_cell_2 = 'C$3'
+    worksheet.data_validation(input_cell_2, {'validate': 'list',
+                                             'source': scenarionames,
+                                             'input_title': 'Pick a scenario'
+                                             })
+    worksheet.write(input_cell_2, scenarionames[1], dropdown_format)
 
-def create_dynamic_block(worksheet, in_dict):
+    # create +/- headings
+    pmformat = workbook.add_format({'bottom': 1,
+                                    'border_color': bordercolor,
+                                    'align': 'right',
+                                    'valign': 'vcentre',
+                                    'font_name': 'Segoe UI (Body)',
+                                    'font_size': 8,
+                                    'bg_color': '#DAEDF8',})
+    pmcell = 'D$3'
+    worksheet.write(pmcell, '+/-', pmformat)
+    pcell = 'E$3'
+    worksheet.write(pcell, '%', pmformat)
+
     # merge cells {B, C, D, E}:2
     # write 'compare loaded scenarios...' in the merged cells, blue cell
-    worksheet.merge_range('B2:E2', 'Compare loaded scenarios...')
+
+    comp_format = workbook.add_format({'top': 1,
+                                       'border_color': bordercolor,
+                                       'align': 'left',
+                                       'valign': 'vcentre',
+                                       'font_name': 'Segoe UI Light (Headings)',
+                                       'font_size': 8,
+                                       'bg_color': '#DAEDF8',
+                                       'indent': 1})
+    worksheet.merge_range('B2:E2', 'Compare two loaded scenarios (use dropdowns)', comp_format)
+    worksheet.write('F2', None, comp_format)
+    worksheet.write('F3', None, pmformat)
+
+def create_dynamic_block(worksheet, workbook, in_dict):
 
     # make column F small and G zero-width
-    worksheet.set_column('F:F', 2.33)
-    worksheet.set_column('G:G', 0)
+    rformat = workbook.add_format({'right': 1,
+                                   'border_color': '#9B9B9B'})
+    worksheet.set_column('F:F', 2.33, rformat)
+    # worksheet.set_column('G:G', 0)
 
 # https://stackoverflow.com/questions/23499017/know-the-depth-of-a-dictionary
 def dict_depth(d):
@@ -191,21 +237,58 @@ def vals_are_lists(d):
 
 # test change
 def create_data_rows(worksheet, in_dict, workbook, groupnames, scenarionames, ind_level):
-    # if at leaf level, write row name and data at proper indentation, push row counter +1
+    nums_offset = 6
     global row_offset
+    groupformat = workbook.add_format({'bold': False,
+                                       'font_name': 'Segoe UI (Body)',
+                                       'font_size': 8,
+                                       'right': 1,
+                                       'border_color': '#9B9B9B'})
+    numformat = workbook.add_format({'font_name': 'Segoe UI (Body)',
+                                     'font_size': 8})
+    lformat = workbook.add_format({'left': 1,
+                                   'border_color': '#9B9B9B'})
+    # if at leaf level, write row name and data at proper indentation, push row counter +1
     if vals_are_lists(in_dict):
-        print('dict')
         for name, datavec in in_dict.items():
-            #TODO write name
-            worksheet.write_row(row_offset, 7, datavec)
+            groupformat.set_indent(ind_level+1)
+            worksheet.write(row_offset, 0, name, groupformat)
+            worksheet.write_row(row_offset, nums_offset, datavec, numformat)
+
+            formula_offset = row_offset + 1
+            formulers = [f'=IFERROR(OFFSET($F{formula_offset}, 0, MATCH(B$3, $G$3:$DB$3, 0)), "-")',
+                         f'=IFERROR(OFFSET($F{formula_offset}, 0, MATCH(C$3, $G$3:$DB$3, 0)), "-")',
+                         f'=IFERROR(C{formula_offset}-B{formula_offset}, "-")',
+                         f'=IFERROR(C{formula_offset}/B{formula_offset}-1, "-")']
+            worksheet.write_row(row_offset, 1, formulers, numformat)
+
             row_offset += 1
+        worksheet.write(row_offset, 0, None, groupformat)
+        row_offset += 1
     else:
-        print('nodict')
         for name, nested_dict in in_dict.items():
-            worksheet.write(row_offset, 0, name)
-            row_offset += 1
-            ind_level += 1
-            create_data_rows(worksheet, nested_dict, workbook, groupnames, scenarionames, ind_level)
+            groupformat.set_indent(ind_level)
+            if ind_level == 0:
+                bigname = '-- ' + name + ' --'
+                groupformat.set_bold(True)
+                groupformat.set_font_size(9)
+                worksheet.write(row_offset, 0, bigname, groupformat)
+                worksheet.write(row_offset, nums_offset, None, lformat)
+                row_offset += 1
+                next_ind = ind_level + 1
+                create_data_rows(worksheet, nested_dict, workbook, groupnames, scenarionames, next_ind)
+            elif ind_level == 1:
+                groupformat.set_bold(True)
+                worksheet.write(row_offset, 0, name, groupformat)
+                worksheet.write(row_offset, nums_offset, None, lformat)
+                row_offset += 1
+                next_ind = ind_level + 1
+                create_data_rows(worksheet, nested_dict, workbook, groupnames, scenarionames, next_ind)
+            else:
+                worksheet.write(row_offset, 0, name, groupformat)
+                row_offset += 1
+                next_ind = ind_level + 1
+                create_data_rows(worksheet, nested_dict, workbook, groupnames, scenarionames, next_ind)
 
 
     # if not at leaf level, write row name at indentation, push row counter +1, recurse
@@ -225,15 +308,15 @@ def create_xl_from_dict(in_dict):
 
         workbook.add_worksheet(sheetname)
         worksheet = workbook.get_worksheet_by_name(sheetname)
+        worksheet.hide_gridlines(2)
 
         sheet_dict = in_dict[sheetname]
         groupnames = get_groups(input_df)
         scenarionames = get_scenarios(input_df)
 
         create_header_block(sheetname, worksheet, sheet_dict, workbook, groupnames, scenarionames)
-        create_dynamic_block(worksheet, in_dict)
+        create_dynamic_block(worksheet, workbook, in_dict)
         create_data_rows(worksheet, sheet_dict, workbook, groupnames, scenarionames, 0)
-        # add_data_to_sheet(sheetname, sheet_dict)
 
     workbook.close()
 
