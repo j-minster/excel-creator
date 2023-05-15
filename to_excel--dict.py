@@ -210,9 +210,20 @@ def create_header_block(sheetname, worksheet, sheet_dict, workbook, groupnames, 
                                        'font_size': 8,
                                        'bg_color': '#DAEDF8',
                                        'indent': 1})
+    lilcell_format = workbook.add_format({'top': 1,
+                                          'right': 1,
+                                          'border_color': bordercolor,
+                                          'align': 'left',
+                                          'valign': 'vcentre',
+                                          'font_name': 'Segoe UI Light (Headings)',
+                                          'font_size': 8,
+                                          'bg_color': '#DAEDF8',
+                                          'indent': 1})
+
     worksheet.merge_range('B2:E2', 'Compare two loaded scenarios (use dropdowns)', comp_format)
-    worksheet.write('F2', None, comp_format)
+    worksheet.write('F2', None, lilcell_format)
     worksheet.write('F3', None, pmformat)
+
 
 def create_dynamic_block(worksheet, workbook, in_dict):
 
@@ -229,26 +240,56 @@ def dict_depth(d):
     return 0
 
 test_dict = df_to_dict(input_df)
-depth = dict_depth(test_dict)
 
+# check whether the values (not the keys) in the dictionary `d` are lists
 def vals_are_lists(d):
     boollist = [isinstance(val, list) for _, val in d.items()]
     return all(boollist)
 
-# test change
-def create_data_rows(worksheet, in_dict, workbook, groupnames, scenarionames, ind_level):
+def create_data_rows(worksheet, in_dict, workbook, groupnames, scenarionames, ind_level, sheetname, writeIndexHeader):
     nums_offset = 6
     global row_offset
+    global index_row_offset
+
     groupformat = workbook.add_format({'bold': False,
                                        'font_name': 'Segoe UI (Body)',
                                        'font_size': 8,
                                        'right': 1,
                                        'border_color': '#9B9B9B'})
+
+    index_groupformat = workbook.add_format({'bold': True,
+                                             'font_name': 'Arial Narrow',
+                                             'font_size': 11,
+                                             'font_color': 'blue',
+                                             'underline': 1,
+                                             'indent': 1})
+
+    index_headerformat = workbook.add_format({'bold': True,
+                                              'bottom': 1,
+                                              'font_name': 'Arial Narrow',
+                                              'font_size': 16,
+                                              'indent': 0})
+    index_ulformat = workbook.add_format({'bottom': 1})
+
+
     numformat = workbook.add_format({'font_name': 'Segoe UI (Body)',
-                                     'font_size': 8})
+                                     'font_size': 8,
+                                     'num_format': '#,##0'})
+    pctformat = workbook.add_format({'font_name': 'Segoe UI (Body)',
+                                     'font_size': 8,
+                                     'num_format': '0.0%'})
+
     lformat = workbook.add_format({'left': 1,
                                    'border_color': '#9B9B9B'})
+    if writeIndexHeader:
+        index_row_offset += 1
+        link_string = f'internal:{sheetname!r}!A1'
+        index_sheet.write_url(index_row_offset, 1, link_string)
+        index_sheet.write(index_row_offset, 1, sheetname, index_headerformat)
+        index_row_offset += 1
+
     # if at leaf level, write row name and data at proper indentation, push row counter +1
+    # else, write metric name and recursively call `create_data_rows`, on items in `in_dict` pushing indentation counter +1
     if vals_are_lists(in_dict):
         for name, datavec in in_dict.items():
             groupformat.set_indent(ind_level+1)
@@ -258,9 +299,10 @@ def create_data_rows(worksheet, in_dict, workbook, groupnames, scenarionames, in
             formula_offset = row_offset + 1
             formulers = [f'=IFERROR(OFFSET($F{formula_offset}, 0, MATCH(B$3, $G$3:$DB$3, 0)), "-")',
                          f'=IFERROR(OFFSET($F{formula_offset}, 0, MATCH(C$3, $G$3:$DB$3, 0)), "-")',
-                         f'=IFERROR(C{formula_offset}-B{formula_offset}, "-")',
-                         f'=IFERROR(C{formula_offset}/B{formula_offset}-1, "-")']
+                         f'=IFERROR(C{formula_offset}-B{formula_offset}, "-")']
+            pct_cell = f'=IFERROR(C{formula_offset}/B{formula_offset}-1, "-")'
             worksheet.write_row(row_offset, 1, formulers, numformat)
+            worksheet.write(row_offset, 4, pct_cell, pctformat)
 
             row_offset += 1
         worksheet.write(row_offset, 0, None, groupformat)
@@ -269,26 +311,36 @@ def create_data_rows(worksheet, in_dict, workbook, groupnames, scenarionames, in
         for name, nested_dict in in_dict.items():
             groupformat.set_indent(ind_level)
             if ind_level == 0:
+                # write `bigname` to sheet
                 bigname = '-- ' + name + ' --'
                 groupformat.set_bold(True)
                 groupformat.set_font_size(9)
                 worksheet.write(row_offset, 0, bigname, groupformat)
                 worksheet.write(row_offset, nums_offset, None, lformat)
+
+                # create index links
+                to_cell = xl_rowcol_to_cell(row_offset, 0)
+                link_string = f'internal:{sheetname!r}!{to_cell}'
+                index_sheet.write_url(index_row_offset, 1, link_string)
+                index_sheet.write(index_row_offset, 1, name, index_groupformat)
+                index_row_offset += 1
+
+                # bump `row_offset` and `next_ind` and recurse again for each `nested_dict`
                 row_offset += 1
                 next_ind = ind_level + 1
-                create_data_rows(worksheet, nested_dict, workbook, groupnames, scenarionames, next_ind)
+                create_data_rows(worksheet, nested_dict, workbook, groupnames, scenarionames, next_ind, sheetname, False)
             elif ind_level == 1:
                 groupformat.set_bold(True)
                 worksheet.write(row_offset, 0, name, groupformat)
                 worksheet.write(row_offset, nums_offset, None, lformat)
                 row_offset += 1
                 next_ind = ind_level + 1
-                create_data_rows(worksheet, nested_dict, workbook, groupnames, scenarionames, next_ind)
+                create_data_rows(worksheet, nested_dict, workbook, groupnames, scenarionames, next_ind, sheetname, False)
             else:
                 worksheet.write(row_offset, 0, name, groupformat)
                 row_offset += 1
                 next_ind = ind_level + 1
-                create_data_rows(worksheet, nested_dict, workbook, groupnames, scenarionames, next_ind)
+                create_data_rows(worksheet, nested_dict, workbook, groupnames, scenarionames, next_ind, sheetname, False)
 
 
     # if not at leaf level, write row name at indentation, push row counter +1, recurse
@@ -299,8 +351,16 @@ def add_data_to_sheet(sheetname, sheet_dict):
 
 def create_xl_from_dict(in_dict):
     # create the excel `Workbook` to write to
+    # TODO: parameterise the name of the output file
     workbook = xlsxwriter.Workbook('dict_test.xlsx')
     sheetnames = list(in_dict.keys())
+
+    # create the index sheet
+    workbook.add_worksheet('Index')
+    global index_sheet
+    index_sheet = workbook.get_worksheet_by_name('Index')
+    global index_row_offset
+    index_row_offset = 0
 
     for sheetname in sheetnames:
         global row_offset
@@ -308,6 +368,7 @@ def create_xl_from_dict(in_dict):
 
         workbook.add_worksheet(sheetname)
         worksheet = workbook.get_worksheet_by_name(sheetname)
+        worksheet.set_default_row(18)
         worksheet.hide_gridlines(2)
 
         sheet_dict = in_dict[sheetname]
@@ -316,8 +377,12 @@ def create_xl_from_dict(in_dict):
 
         create_header_block(sheetname, worksheet, sheet_dict, workbook, groupnames, scenarionames)
         create_dynamic_block(worksheet, workbook, in_dict)
-        create_data_rows(worksheet, sheet_dict, workbook, groupnames, scenarionames, 0)
+        create_data_rows(worksheet, sheet_dict, workbook, groupnames, scenarionames, 0, sheetname, writeIndexHeader=True)
 
+        worksheet.set_default_row(hide_unused_rows=True)
+
+    index_sheet.autofit()
+    index_sheet.hide_gridlines(2)
     workbook.close()
 
 
