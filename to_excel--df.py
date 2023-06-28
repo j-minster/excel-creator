@@ -63,11 +63,15 @@ def df_from_clargs():
     return input_df
 
 def get_scenarios(df):
+    # will ignore empty scenarios only containing ' '
     groups = get_groups(df)
-    allcols = list(df.columns)
+    scen_cols = list(df.columns)
     for group in groups:
-        allcols.remove(group)
-    return allcols
+        scen_cols.remove(group)
+    scen_data = [list(df.get(col)) for col in scen_cols]
+    scen_sets = [set(d) for d in scen_data]
+    nonempty_scens = [col for col, s in zip(scen_cols, scen_sets) if len(s) > 1]
+    return nonempty_scens
 
 ### infinite dict
 class NestedDict(dict):
@@ -136,12 +140,16 @@ def get_sheetnames(in_df):
     sheetset = set(sheetnames)
     return sheetset
 
-### create individual dictionaries for sheets rather than one huge dictionary for the whole dataframe
-def create_sheet_dict(in_df, sheetname):
+def create_sheet_df(in_df, sheetname):
     sheetnames = get_sheetnames(in_df)
     majorcol = list(in_df.columns)[0]
     sub_df = in_df[in_df[majorcol].isin([sheetname])]
+    return sub_df
 
+### create individual dictionaries for sheets rather than one huge dictionary for the whole dataframe
+def create_sheet_dict(in_df, sheetname):
+    sheetnames = get_sheetnames(in_df)
+    sub_df = create_sheet_df(in_df, sheetname)
     d1 = df_to_dict(sub_df)
 
     idx = list(sheetnames).index(sheetname)
@@ -391,7 +399,7 @@ def create_data_rows(worksheet, in_dict, workbook, groupnames, scenarionames, in
                 worksheet.write(row_offset, 4, pct_cell, pctformat)
                 row_offset += 1
 
-        worksheet.write(row_offset, 0, None, groupformat)
+        # worksheet.write(row_offset, 0, None, groupformat)
         row_offset += 1
     else:
         for name, nested_dict in in_dict.items():
@@ -427,6 +435,8 @@ def create_data_rows(worksheet, in_dict, workbook, groupnames, scenarionames, in
                     next_ind = ind_level
                     create_data_rows(worksheet, nested_dict, workbook, groupnames, scenarionames, next_ind, sheetname, False)
                 else:
+                    # worksheet.write(row_offset, 0, None, groupformat)
+                    # row_offset += 1
                     worksheet.write(row_offset, 0, name, groupformat)
                     row_offset += 1
                     next_ind = ind_level + 1
@@ -446,7 +456,6 @@ def create_xl_from_df(in_df):
 
     in_df = shorten_long_sheetnames(in_df)
     in_df = in_df.fillna('')
-    scenarionames = get_scenarios(in_df)
     sheetnames = get_sheetnames(in_df)
 
     for sheetname in sheetnames:
@@ -459,8 +468,10 @@ def create_xl_from_df(in_df):
         worksheet.set_default_row(18)
         worksheet.hide_gridlines(2)
 
+        sheet_df = create_sheet_df(in_df, sheetname)
         sheet_dict = create_sheet_dict(in_df, sheetname)
-        groupnames = get_groups(in_df)
+        scenarionames = get_scenarios(sheet_df)
+        groupnames = get_groups(sheet_df)
 
         create_data_rows(worksheet, sheet_dict, workbook, groupnames, scenarionames, 0, sheetname, writeIndexHeader=True)
         create_header_block(sheetname, worksheet, sheet_dict, workbook, groupnames, scenarionames)
@@ -480,6 +491,7 @@ def create_xl_from_df(in_df):
 
     print(f'Writing excel file to disk as {excel_out_path}, please wait')
     index_sheet.autofit()
+    index_sheet.set_column('B:B', 33.33)
     index_sheet.hide_gridlines(2)
     workbook.close()
 
